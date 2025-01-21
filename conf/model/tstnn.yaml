@@ -1,0 +1,5 @@
+model_name: tstnn
+
+param:
+  L: 512
+  width: 64

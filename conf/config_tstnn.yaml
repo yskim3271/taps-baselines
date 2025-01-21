@@ -1,0 +1,91 @@
+defaults:
+  - _self_
+  - model: tstnn
+  - api: clova_api
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
+
+dset:
+  trainset: dataset/taps_train.txt  # path to train folder
+  validset: dataset/taps_valid.txt  # path to valid folder.
+
+# Dataset related
+sampling_rate: 16000
+segment: 32000
+stride: 16000
+shift: 16000
+
+batch_size: 8
+batch_size_valid: 1
+epochs: 100
+
+# Evaluation only
+eval_only: 
+eval_every: 100  # compute test metrics every so epochs
+eval_stt: true
+transcripts: /home/user114/yunsik/dataset/transcripts.txt
+
+# Loss related
+loss:
+  l2_loss: 0.8
+  timefreq_loss:
+    weight: 0.2
+    frame_size: 512
+    frame_shift: 256
+    loss_type: mae
+
+# Optimization related
+lr: 3e-4
+optim: adam
+betas: [0.9, 0.99]
+clip_grad_norm: 1.0
+
+# Logging and printing, and does not impact training
+device: cuda
+num_prints: 10
+num_workers: 5
+ddp:
+  master_addr: localhost
+  master_port: 12355
+
+# Checkpointing, by default automatically load last checkpoint
+checkpoint_model:
+
+checkpoint: true
+checkpoint_file: checkpoint.th
+continue_from: 
+samples_dir: samples
+log_dir: tensorbd
+
+# Other stuff
+seed: 2039
+
+# Hydra config
+hydra:
+  run:
+    dir: ./outputs/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: ./outputs
+    subdir: ${hydra.job.override_dirname}
+
+  job:
+    chdir: true
+
+  job_logging:
+    handlers:
+      file:
+        class: logging.FileHandler
+        mode: w
+        formatter: colorlog
+        filename: trainer.log
+      console:
+        class: logging.StreamHandler
+        formatter: colorlog
+        stream: ext://sys.stderr
+
+  hydra_logging:
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: colorlog
+        stream: ext://sys.stderr
