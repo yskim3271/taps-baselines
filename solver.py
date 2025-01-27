@@ -257,8 +257,9 @@ class Solver(object):
                             for k, v in metric.items():
                                 self.writer.add_scalar(f"Test/{k.capitalize()}", v, epoch)
 
-                            self.logger.info('Enhance and save samples...')
-                            enhance(self.args, self.model, self.tt_loader, epoch, self.logger, self.samples_dir)
+                            if self.tt_loader:
+                                self.logger.info('Enhance and save samples...')
+                                enhance(self.args, self.model, self.tt_loader, epoch, self.logger, self.samples_dir)
                 
                 # Append metrics to history and print summary
                 self.history.append(metrics)
@@ -300,7 +301,7 @@ class Solver(object):
         for i, data in enumerate(logprog):
             # Unpack data; if valid, there's an extra item (file id), else just 4 items
             if valid:
-                tm, am, mask, tapsId = data
+                tm, am, mask = data
             else:
                 tm, am = data
                 mask = None
@@ -314,7 +315,7 @@ class Solver(object):
             
             # Forward pass
             am_hat = self.model(tm)
-                        
+            
             # Compute loss
             loss_all, loss_dict = self.loss(am_hat, am, mask)
 

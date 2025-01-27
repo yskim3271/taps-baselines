@@ -9,6 +9,7 @@ import importlib
 import numpy as np
 import torch.distributed as dist
 from omegaconf import OmegaConf
+from datasets import load_dataset
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
@@ -78,16 +79,24 @@ def run(rank, world_size, args):
     if world_size > 1:
         model = DDP(model, device_ids=[rank])
 
-    train_list = [line.strip() for line in open(args.dset.trainset, "r")]
-    valid_list = [line.strip() for line in open(args.dset.validset, "r")]
+    # Load dataset
+    if rank == 0:
+        taps_dataset = load_dataset("hina3271/Throat_and_Acoustic_Pairing_Speech_Dataset")
+    dist.barrier()
+    if rank != 0:
+        taps_dataset = load_dataset("hina3271/Throat_and_Acoustic_Pairing_Speech_Dataset")
+    
+    trainset = taps_dataset['train']
+    validset = taps_dataset['dev']
+    testset = taps_dataset['test']
     
     # Set up dataset and dataloader
     tr_dataset = TAPSdataset(
-        datapair_list= train_list,
+        datapair_list= trainset,
         segment=args.segment,
         stride=args.stride,
         shift=args.shift,
-        tapsId=False
+        with_id=False
     )
     
     # Set up distributed sampler
@@ -102,38 +111,37 @@ def run(rank, world_size, args):
     )
         
     # Set up validation and test dataset and dataloader
-    if args.dset.validset:
-        va_dataset = TAPSdataset(
-            datapair_list=valid_list,
-            tapsId=True
-        )
-        va_sampler = DistributedSampler(va_dataset, shuffle=False) if world_size > 1 else None
-        va_loader = DataLoader(
-            dataset=va_dataset, 
-            batch_size=args.batch_size_valid,
-            sampler=va_sampler,
-            num_workers=args.num_workers,
-            collate_fn=validation_collate_fn,
-            pin_memory=True
-        )
-        
-        ev_loader = DataLoader(
-            dataset=va_dataset, 
-            batch_size=1,
-            num_workers=args.num_workers,
-            pin_memory=True
-        )
-        
-        tt_loader = DataLoader(
-            dataset=va_dataset, 
-            batch_size=1,
-            sampler=StepSampler(len(va_dataset), 100),
-            num_workers=args.num_workers,
-            pin_memory=True
-        )
-    else:
-        va_loader = None
-        tt_loader = None
+    va_dataset = TAPSdataset(
+        datapair_list=validset
+    )
+    va_sampler = DistributedSampler(va_dataset, shuffle=False) if world_size > 1 else None
+    va_loader = DataLoader(
+        dataset=va_dataset, 
+        batch_size=args.batch_size_valid,
+        sampler=va_sampler,
+        num_workers=args.num_workers,
+        collate_fn=validation_collate_fn,
+        pin_memory=True
+    )
+
+    ev_dataset = TAPSdataset(
+        datapair_list=testset,
+        with_id=True,
+        with_text=True,
+    )
+    ev_loader = DataLoader(
+        dataset=ev_dataset,
+        batch_size=1,
+        num_workers=args.num_workers,
+        pin_memory=True
+    )
+    tt_loader = DataLoader(
+        dataset=ev_dataset, 
+        batch_size=1,
+        sampler=StepSampler(len(ev_dataset), 100),
+        num_workers=args.num_workers,
+        pin_memory=True
+    )
     
     dataloader = {
         "tr_loader": tr_loader,
@@ -168,11 +176,7 @@ def run(rank, world_size, args):
 def _main(args):
     global __file__
 
-    logger = setup_logger("main")
-    for key, value in args.dset.items():
-        if isinstance(value, str) and key not in ["matching"]:
-            args.dset[key] = hydra.utils.to_absolute_path(value)
-            
+    logger = setup_logger("main")           
     __file__ = hydra.utils.to_absolute_path(__file__)
     
     logger.info("For logs, checkpoints and samples check %s", os.getcwd())

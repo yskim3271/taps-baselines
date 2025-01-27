@@ -5,11 +5,11 @@ defaults:
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
-dset:
-  trainset: dataset/taps_train.txt  # path to train folder
-  validset: dataset/taps_valid.txt  # path to valid folder.
+dataset_load_dir: /home/user114/yunsik/dataset/taps-huggingface
 
-# Dataset related
+## Dataset related
+## Note! The length of a data is (segment - shift)
+## The number of data you get from one audio is (audio_length - segment) // shift
 sampling_rate: 16000
 segment: 32000
 stride: 16000
@@ -19,14 +19,15 @@ batch_size: 8
 batch_size_valid: 1
 epochs: 100
 
-# Evaluation only
+# True if you want to evaluate only
 eval_only: 
-eval_every: 100  # compute test metrics every so epochs
+eval_every: 100 
 eval_stt: true
-transcripts: /home/user114/yunsik/dataset/transcripts.txt
+transcripts: /home/user114/yunsik/tmse/transcripts/transcripts.txt
 
-# Loss related
-loss:
+## Loss related
+## Note! The supported loss functions are:
+## l1_loss, l2_loss, multistftloss, timefreq_loss
   l2_loss: 0.8
   timefreq_loss:
     weight: 0.2
@@ -34,11 +35,11 @@ loss:
     frame_shift: 256
     loss_type: mae
 
-# Optimization related
-lr: 3e-4
+## Optimization related
+## Note! The supported optimizers are: adam, adamwlr: 3e-4
 optim: adam
 betas: [0.9, 0.99]
-clip_grad_norm: 1.0
+clip_grad_norm: 5.0
 
 # Logging and printing, and does not impact training
 device: cuda
@@ -48,12 +49,10 @@ ddp:
   master_addr: localhost
   master_port: 12355
 
-# Checkpointing, by default automatically load last checkpoint
-checkpoint_model:
 
 checkpoint: true
 checkpoint_file: checkpoint.th
-continue_from: 
+continue_from:
 samples_dir: samples
 log_dir: tensorbd
 

@@ -10,7 +10,7 @@ import logging
 from contextlib import contextmanager
 import time
 import torch
-from librosa.filters import mel as librosa_mel_fn
+from librosa.filters import mel as librosa_mel_fn   
     
 def mel_spectrogram(y, n_fft=1024, num_mels=80, sampling_rate=16000, hop_length=256, win_length=1024, fmin=0, fmax=8000, device='cpu'):
     mel = librosa_mel_fn(sr= sampling_rate, n_fft= n_fft, n_mels= num_mels, fmin= fmin, fmax= fmax)

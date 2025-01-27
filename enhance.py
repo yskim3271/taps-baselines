@@ -47,9 +47,9 @@ def enhance(args, model, data_loader, epoch, logger, local_out_dir= None):
         iterator = LogProgress(logger, data_loader, name="Generate enhanced files")
         for data in iterator:
             # Get batch data (batch, channel, time)
-            tm, am, tapsId = data
+            tm, am, id, _ = data
                         
-            tapsId = tapsId[0]
+            id = id[0]
             tm = tm.to(args.device)
             am = am.to(args.device)
 
@@ -65,8 +65,8 @@ def enhance(args, model, data_loader, epoch, logger, local_out_dir= None):
                 "AM_hat": am_hat
             }
             
-            save_wavs(wavs_dict, os.path.join(outdir_wavs, tapsId))
-            save_mels(wavs_dict, os.path.join(outdir_mels, tapsId))
+            save_wavs(wavs_dict, os.path.join(outdir_wavs, id))
+            save_mels(wavs_dict, os.path.join(outdir_mels, id))
             
             
             

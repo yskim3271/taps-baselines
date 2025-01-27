@@ -2,14 +2,8 @@ import random
 import torch
 import torch.utils
 import torch.utils.data
-import torchaudio
 import math
-import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
-
-def filename2tapsID(filename):
-    # p##_u##_mic.wav -> p##_u##
-    return filename.split('/')[-1][:7]
+import numpy as np
 
 class TAPSdataset:
     def __init__(self, 
@@ -17,40 +11,47 @@ class TAPSdataset:
                  segment=None, 
                  stride=None, 
                  shift=None, 
-                 tapsId=False
+                 with_id=False,
+                 with_text=False,
                  ):
         
         self.datapair_list = datapair_list
         self.segment = segment
         self.stride = stride
         self.shift = shift
-        self.tapsId = tapsId
+        self.with_id = with_id
+        self.with_text = with_text
+        assert self.with_id if self.with_text else True, "with_id must be True if with_text is True"
 
-        # Prepare lists for tm and am audio files
+        # Prepare lists for tm and am audio arrays
         tm_list, am_list = [], []
-        for line in self.datapair_list:
-            # Each line is assumed to have format "tm|am"
-            tm, am = line.split('|')
-            # Store tuples of (file_path, number_of_frames_in_that_file)
-            tm_list.append((tm, torchaudio.info(tm).num_frames))
-            am_list.append((am, torchaudio.info(am).num_frames))
+        for item in self.datapair_list:
+            # Load throat and acoustic microphone audio array, and convert to tensor. Add channel dimension
+            tm = item["audio.throat_microphone"]['array'].astype('float32')
+            am = item["audio.acoustic_microphone"]['array'].astype('float32')
+            id = item["speaker_id"] + "_" + item["sentence_id"]
+            text = item["text"]
+            length = tm.shape[-1]
+            tm_list.append((tm, id, text, length))
+            am_list.append((am, id, text, length))
         
         # Create Audioset objects for tm and am
-        self.tm_set = Audioset(files=tm_list, segment=segment, stride=stride, with_path=tapsId)
-        self.am_set = Audioset(files=am_list, segment=segment, stride=stride, with_path=tapsId)
+        self.tm_set = Audioset(wavs=tm_list, segment=segment, stride=stride, with_id=with_id, with_text=with_text)
+        self.am_set = Audioset(wavs=am_list, segment=segment, stride=stride, with_id=with_id, with_text=with_text)
         
     def __len__(self):
         # The length of the dataset is the number of tm_set samples
         return len(self.tm_set)
 
     def __getitem__(self, index):
-        # If tapsId is True, also retrieve the file name
-        if self.tapsId:
-            tm, tm_file = self.tm_set[index]
-            am, am_file = self.am_set[index]
-            assert filename2tapsID(tm_file) == filename2tapsID(am_file), f"File mismatch: {tm_file} vs {am_file}"
-            tapsId = filename2tapsID(tm_file)
-        else:            
+        
+        if self.with_text:
+            tm, id, text = self.tm_set[index]
+            am, _, _ = self.am_set[index]
+        elif self.with_id:
+            tm, id = self.tm_set[index]
+            am, _ = self.am_set[index]
+        else:
             tm = self.tm_set[index]
             am = self.am_set[index]
         
@@ -65,28 +66,31 @@ class TAPSdataset:
             tm = tm[..., offset:offset+t]
         
         # If tapsId is True, return the file ID as well
-        if self.tapsId:
-            return tm, am, tapsId
+        if self.with_text:
+            return tm, am, id, text
+        elif self.with_id:
+            return tm, am, id
         else:
             return tm, am
 
 class Audioset:
-    def __init__(self, files=None, segment=None, stride=None, with_path=False):
+    def __init__(self, wavs=None, segment=None, stride=None, with_id=False, with_text=False):
         # Store the file list and hyperparameters
-        self.files = files
+        self.wavs = wavs
         self.num_examples = []
         self.segment = segment
         self.stride = stride or segment
-        self.with_path = with_path
+        self.with_id = with_id
+        self.with_text = with_text
         
         # Calculate how many segments (examples) each file can produce
-        for _, file_length in self.files:
+        for _, _, _, wav_length in self.wavs:
             # If no fixed segment length is provided or the file is shorter, only 1 example
-            if segment is None or file_length < segment:
+            if segment is None or wav_length < segment:
                 examples = 1
             else:
                 # Otherwise, calculate how many segments fit given stride
-                examples = int(math.ceil((file_length - self.segment) / (self.stride)) + 1)
+                examples = int(math.ceil((wav_length - self.segment) / (self.stride)) + 1)
             self.num_examples.append(examples)
 
     def __len__(self):
@@ -95,7 +99,7 @@ class Audioset:
 
     def __getitem__(self, index):
         # Iterate through files and find which file/segment corresponds to 'index'
-        for (file, _), examples in zip(self.files, self.num_examples):
+        for (wav, id, text, _), examples in zip(self.wavs, self.num_examples):
             # If index is larger than current file's examples, skip to the next file
             if index >= examples:
                 index -= examples
@@ -105,17 +109,21 @@ class Audioset:
             offset = self.stride * index if self.segment else 0
             # Decide how many frames to load (full file if segment is None)
             num_frames = self.segment if self.segment else -1
-            
-            # Load audio from the offset for num_frames
-            wav, _ = torchaudio.load(file, frame_offset=offset, num_frames=num_frames)
-            
+            # Slice the waveform
+            wav = wav[offset:offset+num_frames]
             # If the loaded waveform is shorter than the segment length, pad it
             if self.segment:
-                wav = F.pad(wav, (0, num_frames - wav.shape[-1]))
+                wav = np.pad(wav, (0, num_frames - wav.shape[-1]), 'constant')
+                
+            # Add channel dimension
+            wav = np.expand_dims(wav, axis=0)
             
-            # Return (wav, file) if with_path is True, otherwise just return wav
-            return (wav, file) if self.with_path else wav
-
+            if self.with_text:
+                return wav, id, text
+            elif self.with_id:
+                return wav, id
+            else:
+                return wav
             
 
 class StepSampler(torch.utils.data.Sampler):
@@ -134,24 +142,41 @@ class StepSampler(torch.utils.data.Sampler):
     
 
 def validation_collate_fn(batch):
-    
+    assert len(batch[0]) == 2, "This collate function only works with 2-tuple batches"
     if len(batch) == 1:
-        tm, am, Id = batch[0]
-        return tm.unsqueeze(0), am.unsqueeze(0), None, Id
+        tm, am = batch[0]
+        tm = np.expand_dims(tm, axis=1)
+        am = np.expand_dims(am, axis=1)
+        tm = torch.from_numpy(tm)
+        am = torch.from_numpy(am)
+        return tm, am, None
     
-    tm, am, Id = zip(*batch)
+    tm, am = zip(*batch)
     
-    tm = [inp.clone().detach().squeeze() for inp in tm]
-    am = [inp.clone().detach().squeeze() for inp in am]
-           
-    padded_tm = pad_sequence(tm, batch_first=True, padding_value=0.0).unsqueeze(1)
-    padded_am = pad_sequence(am, batch_first=True, padding_value=0.0).unsqueeze(1)
+    # Squeeze channel dimension
+    tm = [np.squeeze(inp) for inp in tm]
+    am = [np.squeeze(inp) for inp in am]
     
-    mask = torch.zeros(padded_tm.shape, dtype=torch.float32)
-    for i, length in enumerate([inp.size(0) for inp in tm]):
-        mask[i, :, :length] = 1
+    max_length = max(seq.shape[0] for seq in tm)
+    padded_tm = np.full((len(tm), max_length), 0.0, dtype=np.float32)
+    padded_am = padded_tm.copy()
+    mask = padded_tm.copy()
     
-    return padded_tm, padded_am, mask, Id
+    for i, (seq_tm, seq_am) in enumerate(zip(tm, am)):
+        padded_tm[i, :seq_tm.shape[0]] = seq_tm
+        padded_am[i, :seq_am.shape[0]] = seq_am
+        mask[i, :seq_tm.shape[0]] = 1.0
+
+    # Add channel dimension
+    padded_tm = np.expand_dims(padded_tm, axis=1)
+    padded_am = np.expand_dims(padded_am, axis=1)
+    mask = np.expand_dims(mask, axis=1)
+    
+    padded_tm = torch.from_numpy(padded_tm)
+    padded_am = torch.from_numpy(padded_am)
+    mask = torch.from_numpy(mask)
+    
+    return padded_tm, padded_am, mask
 
 class StepSampler(torch.utils.data.Sampler):
     def __init__(self, length, step):
@@ -163,3 +188,43 @@ class StepSampler(torch.utils.data.Sampler):
     
     def __len__(self):
         return self.length // self.step
+
+
+if __name__ == "__main__":
+    from omegaconf import OmegaConf
+    from datasets import load_dataset
+    from torch.utils.data import DataLoader
+    
+    conf = OmegaConf.load("conf/config_seconformer.yaml")
+    
+    taps_dataset = load_dataset("hina3271/Throat_and_Acoustic_Pairing_Speech_Dataset")
+    
+    trainset = taps_dataset['test']
+    
+    dataset = TAPSdataset(
+        datapair_list=trainset,
+        segment=conf.segment,
+        stride=conf.stride,
+        shift=conf.shift,
+        with_text=True,
+        with_id=True
+    )
+    
+    dataloader = DataLoader(
+        dataset=dataset, 
+        batch_size=conf.batch_size_valid,
+        num_workers=conf.num_workers,
+        # collate_fn=validation_collate_fn,
+        pin_memory=True,
+    )
+    
+    # tm, am, mask = next(iter(dataloader))
+    # print(tm, am, mask)
+    # print(tm.shape, am.shape)
+    tm, am, Id, text = next(iter(dataloader))
+
+    print(tm, am, Id, text)
+
+
+
+    

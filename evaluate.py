@@ -41,11 +41,6 @@ def request_transcript(data, url, headers):
         logging.error("Error : " + response.text)
         return None
 
-def parse_transcripts(filepath):
-    with open(filepath, "r") as f:
-        lines = f.read().splitlines()
-    return {l.split('|')[0]: l.split('|')[1] for l in lines}
-
 def get_stts(args, data):
     transcripts = {}
     with ThreadPoolExecutor(max_workers=30) as executor:
@@ -102,13 +97,14 @@ def evaluate(args, model, data_loader, epoch, logger, local_out_dir=None):
         
     metrics = {}
     enhanced = {}
+    transcripts_ref = {}
     model.eval()
     result = []
     with torch.no_grad():
         iterator = LogProgress(logger, data_loader, name="Evaluate enhanced files")
         for i, data in enumerate(iterator):
             # Get batch data
-            tm, am, tapsId = data
+            tm, am, id, text = data
             tm = tm.to(args.device)
             am = am.to(args.device)
             
@@ -117,7 +113,8 @@ def evaluate(args, model, data_loader, epoch, logger, local_out_dir=None):
             am_hat = am_hat.squeeze().cpu().numpy()
             am = am.squeeze().cpu().numpy()
             
-            enhanced[tapsId[0]] = am_hat
+            enhanced[id[0]] = am_hat
+            transcripts_ref[id[0]] = text[0]
             result.append(compute_metrics(am, am_hat))
             
     results = np.array(result)
@@ -133,19 +130,18 @@ def evaluate(args, model, data_loader, epoch, logger, local_out_dir=None):
     if args.eval_stt:
         cer = 0
         wer = 0
-        transcripts_ref = parse_transcripts(args.transcripts)
-        transcripts_gen = get_stts(args, enhanced)
+        transcripts_gen = get_stts(args.api, enhanced)
         if local_out_dir:
             transcripts_file = os.path.join(out_dir, f'transcripts_{epoch}.txt')
         else:
             transcripts_file = f'transcripts_{epoch}.txt'
         with open(transcripts_file, 'w') as f:
-            for tapsId, transcript in transcripts_gen.items():
-                f.write(f'{tapsId}|{transcript}\n')
-        for tapsId, transcript in transcripts_gen.items():
+            for id, transcript in transcripts_gen.items():
+                f.write(f'{id}|{transcript}\n')
+        for id, transcript in transcripts_gen.items():
             if transcript is None:
                 continue
-            ref = transcripts_ref[tapsId]
+            ref = transcripts_ref[id]
             cer += sarmetric.get_cer(ref, transcript)['cer']
             wer += sarmetric.get_wer(ref, transcript)['wer']
         cer = cer / len(transcripts_gen)
@@ -154,9 +150,13 @@ def evaluate(args, model, data_loader, epoch, logger, local_out_dir=None):
         metrics['cer'] = cer
         metrics['wer'] = wer
     
-    with open(os.path.join(out_dir, f'metrics_{epoch}.txt'), 'w') as f:
+    if local_out_dir:
+        metric_file = os.path.join(out_dir, f'metrics_{epoch}.txt')
+    else:
+        metric_file = f'metrics_{epoch}.txt'
+    with open(metric_file, 'w') as f:
         for k, v in metrics.items():
-            f.write(f'{k}: {v}\)\n')
+            f.write(f'{k}={v}\n')
    
     return metrics
 
