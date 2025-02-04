@@ -108,7 +108,7 @@ class Audioset:
             # Otherwise, compute the offset based on stride and index
             offset = self.stride * index if self.segment else 0
             # Decide how many frames to load (full file if segment is None)
-            num_frames = self.segment if self.segment else -1
+            num_frames = self.segment if self.segment else len(wav)
             # Slice the waveform
             wav = wav[offset:offset+num_frames]
             # If the loaded waveform is shorter than the segment length, pad it

@@ -3,5 +3,7 @@ outputs
 transcripts
 conf/api/
 
+
+run.sh
 *pycache*
 *.pyc

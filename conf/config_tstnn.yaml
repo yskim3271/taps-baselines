@@ -5,8 +5,6 @@ defaults:
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
-dataset_load_dir: /home/user114/yunsik/dataset/taps-huggingface
-
 ## Dataset related
 ## Note! The length of a data is (segment - shift)
 ## The number of data you get from one audio is (audio_length - segment) // shift
@@ -17,17 +15,17 @@ shift: 16000
 
 batch_size: 8
 batch_size_valid: 1
-epochs: 100
+epochs: 200
 
 # True if you want to evaluate only
 eval_only: 
-eval_every: 100 
+eval_every: 200 
 eval_stt: true
-transcripts: /home/user114/yunsik/tmse/transcripts/transcripts.txt
 
 ## Loss related
 ## Note! The supported loss functions are:
 ## l1_loss, l2_loss, multistftloss, timefreq_loss
+loss:
   l2_loss: 0.8
   timefreq_loss:
     weight: 0.2
@@ -36,7 +34,8 @@ transcripts: /home/user114/yunsik/tmse/transcripts/transcripts.txt
     loss_type: mae
 
 ## Optimization related
-## Note! The supported optimizers are: adam, adamwlr: 3e-4
+## Note! The supported optimizers are: adam, adamw
+lr: 3e-4
 optim: adam
 betas: [0.9, 0.99]
 clip_grad_norm: 5.0
