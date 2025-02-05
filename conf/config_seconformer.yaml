@@ -1,7 +1,6 @@
 defaults:
   - _self_
   - model: seconformer
-  - api: clova_api
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
@@ -18,7 +17,7 @@ batch_size_valid: 16
 epochs: 200
 
 # True if you want to evaluate only
-eval_only:            
+eval_only: true     
 eval_every: 200
 eval_stt: true
 
@@ -51,7 +50,7 @@ ddp:
   master_addr: localhost
   master_port: 12355
 
-checkpoint: true                
+checkpoint: true
 checkpoint_file: checkpoint.th  
 continue_from:
 samples_dir: samples

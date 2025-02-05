@@ -173,9 +173,9 @@ class Solver(object):
 
     def train(self):
         """Main training loop, including optional evaluation phases."""
-        # If eval_only is True, and we have a test loader (tt_loader), do evaluation only
-        if self.eval_only and self.tt_loader and self.rank == 0: 
-            metric = evaluate(self.args, self.model, self.tt_loader)
+        if self.eval_only and self.rank == 0: 
+            with swap_state(self.model.module if self.is_distributed else self.model, self.best_state['model']):
+                evaluate(self.args, self.model, self.ev_loader, self.logger)
             return
 
         # If there's a history from the checkpoint, replay metrics
@@ -210,23 +210,19 @@ class Solver(object):
                     bold(f'Train Summary | End of Epoch {epoch + 1} | '
                          f'Time {time.time() - start:.2f}s | Train Loss {train_loss:.5f}'))
             
-            # Optionally run validation if va_loader is present
-            if self.va_loader:
-                self.model.eval()
-                
-                if self.rank == 0:
-                    self.logger.info('-' * 70)
-                    self.logger.info('Validation...')
-                
-                with torch.no_grad():
-                    valid_loss = self._run_one_epoch(epoch, valid=True)
-                
-                if self.rank == 0:
-                    self.logger.info(
-                        bold(f'Valid Summary | End of Epoch {epoch + 1} | '
-                            f'Time {time.time() - start:.2f}s | Valid Loss {valid_loss:.5f}'))
-            else:
-                valid_loss = 0
+            self.model.eval()
+            if self.rank == 0:
+                self.logger.info('-' * 70)
+                self.logger.info('Validation...')
+            
+            with torch.no_grad():
+                valid_loss = self._run_one_epoch(epoch, valid=True)
+            
+            if self.rank == 0:
+                self.logger.info(
+                    bold(f'Valid Summary | End of Epoch {epoch + 1} | '
+                        f'Time {time.time() - start:.2f}s | Valid Loss {valid_loss:.5f}'))
+
             
             # If distributed, we can synchronize here so that next epoch starts together
             if self.is_distributed:
@@ -244,7 +240,7 @@ class Solver(object):
 
                 # Evaluate on ev_loader (test set) every eval_every epochs (or last epoch)
                 if self.eval_every is not None:
-                    if ((epoch + 1) % self.eval_every == 0 or epoch == self.epochs - 1) and self.ev_loader:
+                    if ((epoch + 1) % self.eval_every == 0 or epoch == self.epochs - 1):
                         self.logger.info('-' * 70)
                         self.logger.info('Evaluating on the test set...')
                         
@@ -257,9 +253,8 @@ class Solver(object):
                             for k, v in metric.items():
                                 self.writer.add_scalar(f"Test/{k.capitalize()}", v, epoch)
 
-                            if self.tt_loader:
-                                self.logger.info('Enhance and save samples...')
-                                enhance(self.args, self.model, self.tt_loader, epoch, self.logger, self.samples_dir)
+                            self.logger.info('Enhance and save samples...')
+                            enhance(self.args, self.model, self.tt_loader, epoch, self.logger, self.samples_dir)
                 
                 # Append metrics to history and print summary
                 self.history.append(metrics)

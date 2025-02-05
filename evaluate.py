@@ -4,55 +4,39 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 # author: yunsik
-import io
-import os
-import logging
 import torch
-import requests
 import nlptutti as sarmetric
 import numpy as np
-
-from scipy.io.wavfile import write
-from concurrent.futures import ThreadPoolExecutor
 from pesq import pesq
 from pystoi import stoi
 from metric_helper import wss, llr, SSNR, trim_mos
 from utils import bold, LogProgress
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
-def _numpy_to_wavobject(ndarr, sample_rate=16000):
-    bytes_wav = bytes()
-    byte_io = io.BytesIO(bytes_wav)
-    assert ndarr.ndim == 1
-    ndarr = ndarr / max(ndarr.max(), 1)
-    ndarr = ndarr * 32767
-    ndarr = ndarr.astype('int16')
+def get_stts(args, logger, enhanced):
+
+    processor = Wav2Vec2Processor.from_pretrained("kresnik/wav2vec2-large-xlsr-korean")
+    model = Wav2Vec2ForCTC.from_pretrained("kresnik/wav2vec2-large-xlsr-korean").to(args.device)
     
-    write(byte_io, sample_rate, ndarr)
-    result_bytes = byte_io.read()
-    return result_bytes
+    cer, wer = 0, 0
+    iterator = LogProgress(logger, enhanced, name="STT Evaluation")
+    for wav, text in iterator:
+        inputs = processor(wav.squeeze(), sampling_rate=16000, return_tensors="pt", padding="longest")
+        input_values = inputs.input_values.to("cuda")
+        
+        with torch.no_grad():
+            logits = model(input_values).logits
+        
+        predicted_ids = torch.argmax(logits, dim=-1)
+        transcription = processor.batch_decode(predicted_ids)[0]
+        cer += sarmetric.get_cer(text, transcription, rm_punctuation=True)['cer']
+        wer += sarmetric.get_wer(text, transcription, rm_punctuation=True)['wer']
+    
+    cer /= len(enhanced)
+    wer /= len(enhanced)
+    
+    return cer, wer
 
-def request_transcript(data, url, headers):
-    response = requests.post(url,  data=data, headers=headers)
-    rescode = response.status_code
-    if(rescode == 200):
-        # clova stt api returns json format, so we need to remove the first 9 characters and the last 2 characters
-        return response.text[9:-2]     
-    else:
-        logging.error("Error : " + response.text)
-        return None
-
-def get_stts(args, data):
-    transcripts = {}
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        futures = {}
-        for filename, d in data.items():
-            d = _numpy_to_wavobject(d)
-            future = executor.submit(request_transcript, d, args.url, args.headers)
-            futures[filename] = future
-        for filename, future in futures.items():
-            transcript = future.result()
-            transcripts[filename] = transcript
-    return transcripts
 
 ## Code modified from https://github.com/wooseok-shin/MetricGAN-plus-pytorch/tree/main
 def compute_metrics(target_wav, pred_wav, fs=16000):
@@ -92,72 +76,41 @@ def compute_metrics(target_wav, pred_wav, fs=16000):
     return Pesq, Stoi, Csig, Cbak, Covl
 
 
-
-def evaluate(args, model, data_loader, epoch, logger, local_out_dir=None):
+def evaluate(args, model, data_loader, logger):
         
-    metrics = {}
-    enhanced = {}
-    transcripts_ref = {}
-    model.eval()
-    result = []
-    with torch.no_grad():
-        iterator = LogProgress(logger, data_loader, name="Evaluate enhanced files")
-        for i, data in enumerate(iterator):
-            # Get batch data
-            tm, am, id, text = data
-            tm = tm.to(args.device)
-            am = am.to(args.device)
-            
-            am_hat = model(tm)
-                        
-            am_hat = am_hat.squeeze().cpu().numpy()
-            am = am.squeeze().cpu().numpy()
-            
-            enhanced[id[0]] = am_hat
-            transcripts_ref[id[0]] = text[0]
-            result.append(compute_metrics(am, am_hat))
-            
-    results = np.array(result)
+    metric = {}
+    
+    iterator = LogProgress(logger, data_loader, name=f"Evaluation")
+    enhanced = []
+    results  = []
+    for data in iterator:
+        tm, am, id, text = data
+        tm = tm.to(args.device)
+        am = am.to(args.device)
+        
+        am_hat = model(tm)
+                    
+        am_hat = am_hat.squeeze().cpu().numpy()
+        am = am.squeeze().cpu().numpy()
+        
+        enhanced.append((am_hat, text[0]))
+        results.append(compute_metrics(am, am_hat))
+    
+    results = np.array(results)
     pesq, stoi, csig, cbak, covl = np.mean(results, axis=0)
-    metrics = {'pesq': pesq, 'stoi': stoi, 'csig': csig, 'cbak': cbak, 'covl': covl}
-    
-    logger.info(bold(f'Test set performance:PESQ={pesq:.4f}, STOI={stoi:.4f}, CSIG={csig:.4f}, CBAK={cbak:.4f}, COVL={covl:.4f}'))
-    
-    if local_out_dir:
-        out_dir = local_out_dir
-        os.makedirs(out_dir, exist_ok=True)
+    metric = {
+        "pesq": pesq,
+        "stoi": stoi,
+        "csig": csig,
+        "cbak": cbak,
+        "covl": covl
+    }
+    logger.info(bold(f"Performance: PESQ={pesq:.4f}, STOI={stoi:.4f}, CSIG={csig:.4f}, CBAK={cbak:.4f}, COVL={covl:.4f}"))
     
     if args.eval_stt:
-        cer = 0
-        wer = 0
-        transcripts_gen = get_stts(args.api, enhanced)
-        if local_out_dir:
-            transcripts_file = os.path.join(out_dir, f'transcripts_{epoch}.txt')
-        else:
-            transcripts_file = f'transcripts_{epoch}.txt'
-        with open(transcripts_file, 'w') as f:
-            for id, transcript in transcripts_gen.items():
-                f.write(f'{id}|{transcript}\n')
-        for id, transcript in transcripts_gen.items():
-            if transcript is None:
-                continue
-            ref = transcripts_ref[id]
-            cer += sarmetric.get_cer(ref, transcript)['cer']
-            wer += sarmetric.get_wer(ref, transcript)['wer']
-        cer = cer / len(transcripts_gen)
-        wer = wer / len(transcripts_gen)
-        logger.info(bold(f'Test set performance:CER={cer:.4f}, WER={wer:.4f}.'))
-        metrics['cer'] = cer
-        metrics['wer'] = wer
-    
-    if local_out_dir:
-        metric_file = os.path.join(out_dir, f'metrics_{epoch}.txt')
-    else:
-        metric_file = f'metrics_{epoch}.txt'
-    with open(metric_file, 'w') as f:
-        for k, v in metrics.items():
-            f.write(f'{k}={v}\n')
+        cer, wer = get_stts(args, logger, enhanced)
+        metric['cer'] = cer
+        metric['wer'] = wer
+        logger.info(bold(f"Performance: CER={cer:.4f}, WER={wer:.4f}"))
    
-    return metrics
-
-
+    return metric

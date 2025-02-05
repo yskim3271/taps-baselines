@@ -54,7 +54,8 @@ def run(rank, world_size, args):
     logger = setup_logger("train", rank)
 
     # Set up distributed training environment
-    setup_distributed(rank, world_size, args)
+    if world_size > 1:
+        setup_distributed(rank, world_size, args)
     
     if rank == 0:
         logger.info(f"Training with {world_size} GPUs")
@@ -88,7 +89,8 @@ def run(rank, world_size, args):
     # Load dataset
     if rank == 0:
         taps_dataset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset")
-    dist.barrier()
+    if world_size > 1:
+        dist.barrier()
     if rank != 0:
         taps_dataset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset")
     

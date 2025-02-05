@@ -1,7 +1,6 @@
 defaults:
   - _self_
   - model: tstnn
-  - api: clova_api
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
