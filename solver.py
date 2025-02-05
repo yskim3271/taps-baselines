@@ -173,9 +173,16 @@ class Solver(object):
 
     def train(self):
         """Main training loop, including optional evaluation phases."""
-        if self.eval_only and self.rank == 0: 
-            with swap_state(self.model.module if self.is_distributed else self.model, self.best_state['model']):
-                evaluate(self.args, self.model, self.ev_loader, self.logger)
+        if self.eval_only:
+            if self.rank == 0:
+                if self.best_state is not None:
+                    if self.is_distributed:
+                        self.model.module.load_state_dict(self.best_state['model'])
+                    else:
+                        self.model.load_state_dict(self.best_state['model'])
+                    evaluate(self.args, self.model, self.ev_loader, self.logger)
+                else:
+                    self.logger.info("No pretrained model found, skipping evaluation")
             return
 
         # If there's a history from the checkpoint, replay metrics
