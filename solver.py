@@ -253,7 +253,7 @@ class Solver(object):
                         
                         # Temporarily swap model weights with best_state for evaluation
                         with swap_state(self.model.module if self.is_distributed else self.model, self.best_state['model']):
-                            metric = evaluate(self.args, self.model, self.ev_loader, epoch, self.logger)
+                            metric = evaluate(self.args, self.model, self.ev_loader, self.logger)
                             metrics.update(metric)
                             
                             # Log test metrics to TensorBoard

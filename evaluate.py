@@ -83,18 +83,19 @@ def evaluate(args, model, data_loader, logger):
     iterator = LogProgress(logger, data_loader, name=f"Evaluation")
     enhanced = []
     results  = []
-    for data in iterator:
-        tm, am, id, text = data
-        tm = tm.to(args.device)
-        am = am.to(args.device)
-        
-        am_hat = model(tm)
-                    
-        am_hat = am_hat.squeeze().cpu().numpy()
-        am = am.squeeze().cpu().numpy()
-        
-        enhanced.append((am_hat, text[0]))
-        results.append(compute_metrics(am, am_hat))
+    with torch.no_grad():
+        for data in iterator:
+            tm, am, id, text = data
+            tm = tm.to(args.device)
+            am = am.to(args.device)
+            
+            am_hat = model(tm)
+                        
+            am_hat = am_hat.squeeze().cpu().numpy()
+            am = am.squeeze().cpu().numpy()
+            
+            enhanced.append((am_hat, text[0]))
+            results.append(compute_metrics(am, am_hat))
     
     results = np.array(results)
     pesq, stoi, csig, cbak, covl = np.mean(results, axis=0)
