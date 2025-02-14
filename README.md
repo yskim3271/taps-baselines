@@ -30,7 +30,7 @@ SE-Conformer is a speech enhancement model that combines convolutional and trans
 
 ## Running Evaluation on the Test Set
 The `evaluate.py` script is used to evaluate the model on the test set. The script will evaluate the model performace in terms of PESQ, STOI, CSIG, CBAK, and COVL. You can also evaluate the model using the STT model to calculate the Character Error Rate (CER) and Word Error Rate (WER). The default model for the STT evaluation is the [whisper-large-v3-turbo-korean](https://huggingface.co/ghost613/whisper-large-v3-turbo-korean) model which is a fine-tuned version of the [whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) model on the Korean language. You can change the model by changing the `enhance.py` script.
-```python
+```
 python evaluate.py --ckpt_dir=<path to the checkpoint> --log_file=<filename of log>
 ```
 
@@ -50,7 +50,7 @@ optinal arguments:
 
 ## Inference on the Test Set
 The `enhance.py` script is used to enhance the audio samples in the test set.
-```python
+```
 python enhance.py --ckpt_dir=<path to the checkpoint> --output_dir=<sample directory>
 ```
 For more details regarding possible arguments, please see:
@@ -75,7 +75,7 @@ The `train.py` script is used to train the model on the TAPS dataset. The script
 
 The configuration files are stored in the `configs` directory. You can train baseline models by selecting the configuration file for the model you want to train. For example, to train the SE-Conformer model, you can use the `config_seconformer.yaml` configuration file. If you want to change model parameters, you can override model configs in `conf/model` directory.
 
-```python
+```
 python train.py --config_name="config_$ModelName" $OverrideParams
 ```
 - `--config_name`: (required, str) – Name of the configuration file to use.
