@@ -3,13 +3,6 @@ import torch
 import torch.nn.functional as F
 
 def masking_and_split(x, y, mask):
-    """
-    x, y, mask: (B, 1, T) 형태
-    각 배치별로 유효 길이만큼 슬라이스하여 list로 반환
-      -> 반환: x_list, y_list
-         (길이가 B인 list)
-         각 원소는 (1, L_i) 형태
-    """
     B, C, T = x.shape
     lengths = mask.sum(dim=[1, 2]).int()  # (B,)
 
@@ -26,27 +19,11 @@ def masking_and_split(x, y, mask):
     return x_list, y_list
 
 def l2_loss(x, y, mask=None):
-    """Calculate L2 loss.
-    Args:
-        x (Tensor): Input tensor.
-        y (Tensor): Target tensor.
-        mask (Tensor): Mask tensor.
-    Returns:
-        Tensor: L2 loss value.
-    """
     if mask is not None:
         return F.mse_loss(x * mask, y * mask)
     return F.mse_loss(x, y)
 
 def l1_loss(x, y, mask=None):
-    """Calculate L1 loss.
-    Args:
-        x (Tensor): Input tensor.
-        y (Tensor): Target tensor.
-        mask (Tensor): Mask tensor.
-    Returns:
-        Tensor: L1 loss value.
-    """
     if mask is not None:
         return F.l1_loss(x * mask, y * mask)
     return F.l1_loss(x, y)

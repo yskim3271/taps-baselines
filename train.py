@@ -80,12 +80,6 @@ def run(rank, world_size, args):
     if world_size > 1:
         model = DDP(model, device_ids=[rank])
 
-    import os
-    from huggingface_hub import login
-
-    token = os.getenv("HUGGINGFACE_TOKEN")
-    login(token)
-
     # Load dataset
     if rank == 0:
         taps_dataset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset")

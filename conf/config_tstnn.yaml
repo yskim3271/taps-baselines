@@ -79,10 +79,3 @@ hydra:
         class: logging.StreamHandler
         formatter: colorlog
         stream: ext://sys.stderr
-
-  hydra_logging:
-    handlers:
-      console:
-        class: logging.StreamHandler
-        formatter: colorlog
-        stream: ext://sys.stderr

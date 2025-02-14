@@ -4,31 +4,42 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 # author: yunsik
+import os
 import torch
 import nlptutti as sarmetric
 import numpy as np
+
 from pesq import pesq
 from pystoi import stoi
 from metric_helper import wss, llr, SSNR, trim_mos
 from utils import bold, LogProgress
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+
 
 def get_stts(args, logger, enhanced):
 
-    processor = Wav2Vec2Processor.from_pretrained("kresnik/wav2vec2-large-xlsr-korean")
-    model = Wav2Vec2ForCTC.from_pretrained("kresnik/wav2vec2-large-xlsr-korean").to(args.device)
-    
     cer, wer = 0, 0
+    model_id = "ghost613/whisper-large-v3-turbo-korean"
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    model_id, torch_dtype=torch.float32, low_cpu_mem_usage=True, use_safetensors=True
+    )
+    model.to(args.device)
+    
+    processor = AutoProcessor.from_pretrained(model_id)
+
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        torch_dtype=torch.float32,
+        device=args.device,)
+    
     iterator = LogProgress(logger, enhanced, name="STT Evaluation")
     for wav, text in iterator:
-        inputs = processor(wav.squeeze(), sampling_rate=16000, return_tensors="pt", padding="longest")
-        input_values = inputs.input_values.to("cuda")
-        
         with torch.no_grad():
-            logits = model(input_values).logits
-        
-        predicted_ids = torch.argmax(logits, dim=-1)
-        transcription = processor.batch_decode(predicted_ids)[0]
+            transcription = pipe(wav, generate_kwargs={"num_beams": 1, "max_length": 100})['text']
+
         cer += sarmetric.get_cer(text, transcription, rm_punctuation=True)['cer']
         wer += sarmetric.get_wer(text, transcription, rm_punctuation=True)['wer']
     
@@ -36,6 +47,12 @@ def get_stts(args, logger, enhanced):
     wer /= len(enhanced)
     
     return cer, wer
+
+
+def parse_transcripts(filepath):
+    with open(filepath, "r") as f:
+        lines = f.read().splitlines()
+    return {l.split('|')[0]: l.split('|')[1] for l in lines}
 
 
 ## Code modified from https://github.com/wooseok-shin/MetricGAN-plus-pytorch/tree/main
@@ -115,3 +132,67 @@ def evaluate(args, model, data_loader, logger):
         logger.info(bold(f"Performance: CER={cer:.4f}, WER={wer:.4f}"))
    
     return metric
+
+
+
+if __name__=="__main__":
+    import logging
+    import logging.config
+    import argparse
+    import importlib
+    from data import TAPSdataset, StepSampler
+    from omegaconf import OmegaConf
+    from torch.utils.data import DataLoader
+    from datasets import load_dataset
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--chkpt_dir", type=str, default='.', help="Path to the checkpoint directory. default is current directory")
+    parser.add_argument("--chkpt_file", type=str, default="best.th", help="Checkpoint file name. default is best.th")
+    parser.add_argument("--log_file", type=str, default="evaluate.log", help="Name of the log file. default is evaluate.log")
+    parser.add_argument("--eval_stt", default=False, action="store_true", help="Evaluate the model using the STT model.")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Specifies the device (cuda or cpu).")
+
+    args = parser.parse_args()
+    
+    chkpt_dir = args.chkpt_dir
+    chkpt_file = args.chkpt_file
+    device = args.device
+    log_file = args.log_file
+    
+    conf = OmegaConf.load(os.path.join(chkpt_dir, '.hydra', "config.yaml"))
+    hydra_conf = OmegaConf.load(os.path.join(chkpt_dir, '.hydra', "hydra.yaml"))
+    hydra_conf.hydra.job_logging.handlers.file.filename = log_file
+    
+    logging.config.dictConfig(OmegaConf.to_container(hydra_conf.hydra.job_logging, resolve=True))
+    logger = logging.getLogger(__name__)
+    
+    conf.device = device
+    
+    model_args = conf.model
+    model_name = model_args.model_name
+    module = importlib.import_module("models."+ model_name)
+    model_class = getattr(module, model_name)
+    
+    model = model_class(**model_args.param).to(device)
+    chkpt = torch.load(os.path.join(chkpt_dir, chkpt_file), map_location=device)
+    model.load_state_dict(chkpt['model'])
+    
+    testset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset", split="test")
+    
+    tt_dataset = TAPSdataset(datapair_list=testset, with_id=True, with_text=True)
+    tt_loader = DataLoader(
+        dataset=tt_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True
+        )
+        
+    logger.info(f"Model: {model_name}")
+    logger.info(f"Checkpoint: {chkpt_dir}")
+    logger.info(f"Device: {device}")
+    
+    evaluate(args=conf, 
+             model=model,
+             data_loader=tt_loader,
+             logger=logger)
