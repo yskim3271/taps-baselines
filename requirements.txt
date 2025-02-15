@@ -1,0 +1,14 @@
+hydra-core>=1.2.0
+torchaudio>=2.6.0
+psutil
+torch
+numpy
+datasets
+tensorboard
+matplotlib
+librosa
+nlptutti
+pesq
+pystoi
+transformers
+hydra_colorlog

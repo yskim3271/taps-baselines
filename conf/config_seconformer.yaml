@@ -17,7 +17,7 @@ batch_size_valid: 16
 epochs: 200
 
 # True if you want to evaluate only
-eval_only: true     
+eval_only:
 eval_every: 200
 eval_stt: true
 
@@ -57,7 +57,7 @@ samples_dir: samples
 log_dir: tensorbd
 
 ## Other stuff
-seed: 2035
+seed: 2039
 
 ## Hydra config
 hydra:

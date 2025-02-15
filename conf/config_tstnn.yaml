@@ -17,7 +17,7 @@ batch_size_valid: 1
 epochs: 200
 
 # True if you want to evaluate only
-eval_only: 
+eval_only:
 eval_every: 200 
 eval_stt: true
 

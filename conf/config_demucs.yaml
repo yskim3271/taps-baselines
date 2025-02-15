@@ -14,11 +14,11 @@ shift: 32000
 
 batch_size: 16
 batch_size_valid: 4
-epochs: 100
+epochs: 200
 
 # True if you want to evaluate only
 eval_only: 
-eval_every: 100
+eval_every: 200
 eval_stt: true
 
 ## Loss related
