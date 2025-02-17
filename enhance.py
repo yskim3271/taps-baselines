@@ -141,7 +141,7 @@ if __name__=="__main__":
             args=conf,
             epoch=None,
             logger=logger,
-            local_out_dir=chkpt_dir if local_out_dir is None else local_out_dir
+            local_out_dir=local_out_dir
             )
     
     
