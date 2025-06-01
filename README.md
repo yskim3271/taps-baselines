@@ -26,44 +26,44 @@ SE-Conformer is a speech enhancement model that combines convolutional and trans
 📄 **Reference:** [SE-Conformer Paper (ISCA Archive)](https://www.isca-archive.org/interspeech_2021/kim21h_interspeech.html)  
 
 ## Installation
-`pip install requirements.txt`
+`pip install -r requirements.txt`
 
 ## Running Evaluation on the Test Set
 The `evaluate.py` script is used to evaluate the model on the test set. The script will evaluate the model performace in terms of PESQ, STOI, CSIG, CBAK, and COVL. You can also evaluate the model using the STT model to calculate the Character Error Rate (CER) and Word Error Rate (WER). The default model for the STT evaluation is the [whisper-large-v3-turbo-korean](https://huggingface.co/ghost613/whisper-large-v3-turbo-korean) model which is a fine-tuned version of the [whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) model on the Korean language. You can change the model by changing the `enhance.py` script.
 ```
-python evaluate.py --ckpt_dir=<path to the checkpoint> --log_file=<filename of log>
+python evaluate.py --config=<path to the model configuration file> --checkpoint=<path to the checkpoint> --log_file=<filename of log> --device=<device>
 ```
 
 For more details regarding possible arguments, please see:
 ```
-usage: evaluate.py [-h] [--ckpt_dir CKPT_DIR] [--ckpt_file CKPT_FILE] [--log_file LOG_FILE] [--device DEVICE] [--eval_stt]
+usage: evaluate.py [-h] [--config CONFIG] [--checkpoint CHECKPOINT] [--log_file LOG_FILE] [--device DEVICE] [--eval_stt]
 
 optinal arguments:
   -h, --help                show this help message and exit
-  --ckpt_dir CKPT_DIR       Path to the model checkpoint directory.
-  --ckpt_file CKPT_FILE     Checkpoint file name. default is "best.th"
+  --config CONFIG           Path to the model configuration file.
+  --checkpoint CHECKPOINT   Path to the checkpoint directory. default is current directory
   --log_file LOG_FILE       Name of the log file. default is "evalute.log"
   --eval_stt                Evaluate the model using the STT model.
-  --device DEVICE           Specifies the device (cuda or cpu). default is "cuda" if available.
+  --device DEVICE           Specifies the device (cuda or cpu). default is "cuda"
 ```
 
 
 ## Inference on the Test Set
 The `enhance.py` script is used to enhance the audio samples in the test set.
 ```
-python enhance.py --ckpt_dir=<path to the checkpoint> --output_dir=<sample directory>
+python enhance.py --config=<path to the model configuration file> --checkpoint=<path to the checkpoint> --output_dir=<sample directory> --device=<device>
 ```
 For more details regarding possible arguments, please see:
 
 ```
-usage: enhance.py [-h] [--ckpt_dir CKPT_DIR] [--ckpt_file CKPT_FILE] [--output_dir OUTPUT_DIR] [--device DEVICE]
+usage: enhance.py [-h] [--config CONFIG] [--checkpoint CHECKPOINT] [--output_dir OUTPUT_DIR] [--device DEVICE]
 
 optinal arguments:
   -h, --help                show this help message and exit
-  --ckpt_dir CKPT_DIR       Path to the model checkpoint directory.
-  --ckpt_file CKPT_FILE     Checkpoint file name. default is best.th
+  --config CONFIG           Path to the model configuration file.
+  --checkpoint CHECKPOINT   Path to the checkpoint directory. default is current directory
   --output_dir OUTPUT_DIR   Directory to save the enhanced samples. default is "samples"
-  --device DEVICE           Specifies the device (cuda or cpu). default is "cuda" if available.
+  --device DEVICE           Specifies the device (cuda or cpu). default is "cuda"
 ```
 
 

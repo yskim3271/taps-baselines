@@ -32,7 +32,6 @@ def write(wav, filename, sr=16_000):
 
 
 def enhance(args, model, data_loader, epoch, logger, local_out_dir= None):
-    model.eval()
     if local_out_dir:
         out_dir = local_out_dir
     else:
@@ -86,64 +85,67 @@ if __name__=="__main__":
     from datasets import load_dataset
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--chkpt_dir", type=str, default='.', help="Path to the checkpoint directory. default is current directory")
-    parser.add_argument("--chkpt_file", type=str, default="best.th", help="Checkpoint file name. default is best.th")
+    parser.add_argument("--config", type=str, required=True, help="Path to the model configuration file.")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Path to the checkpoint directory. default is current directory")
     parser.add_argument("--output_dir", type=str, default="samples", help="Output directory for enhanced samples. default is samples")
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Specifies the device (cuda or cpu).")
+    parser.add_argument("--device", type=str, default="cuda", help="Specifies the device (cuda or cpu).")
     
     args = parser.parse_args()
-    chkpt_dir = args.chkpt_dir
-    chkpt_file = args.chkpt_file
+    checkpoint_path = args.checkpoint
     device = args.device
     local_out_dir = args.output_dir
 
-    conf = OmegaConf.load(os.path.join(chkpt_dir, '.hydra', "config.yaml"))
-    hydra_conf = OmegaConf.load(os.path.join(chkpt_dir, '.hydra', "hydra.yaml"))
-    del hydra_conf.hydra.job_logging.handlers.file
-    hydra_conf.hydra.job_logging.root.handlers = ['console']
-    logging_conf = OmegaConf.to_container(hydra_conf.hydra.job_logging, resolve=True)
-    
-    
-    logging.config.dictConfig(logging_conf)
-    logger = logging.getLogger(__name__)
-    conf.device = device
-    
-    model_args = conf.model
-    model_name = model_args.model_name
-    module = importlib.import_module("models."+ model_name)
-    model_class = getattr(module, model_name)
-    
-    model = model_class(**model_args.param).to(device)
-    chkpt = torch.load(os.path.join(chkpt_dir, chkpt_file), map_location=device)
-    model.load_state_dict(chkpt['model'])
-    
-    testset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset", split="test")
-    
-    tt_dataset = TAPSdataset(datapair_list=testset, with_id=True, with_text=True)
-    tt_loader = DataLoader(
-        dataset=tt_dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=0,
-        pin_memory=True,
-        sampler=StepSampler(len(tt_dataset), step=100)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
     )
     
+    logger = logging.getLogger(__name__)
     
-    logger.info(f"Model: {model_name}")
-    logger.info(f"Checkpoint: {chkpt_dir}")
-    logger.info(f"Device: {device}")
-    logger.info(f"Output directory: {local_out_dir}")
-    os.makedirs(local_out_dir, exist_ok=True)
-    
-    enhance(model=model,
-            data_loader=tt_loader,
-            args=conf,
-            epoch=None,
-            logger=logger,
-            local_out_dir=local_out_dir
-            )
-    
+    try:
+        conf = OmegaConf.load(args.config)
+        conf.device = device
+        
+        model_args = conf.model
+        model_name = model_args.model_name
+        module = importlib.import_module("models."+ model_name)
+        model_class = getattr(module, model_name)
+        model = model_class(**model_args.param).to(device)
+        chkpt = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(chkpt['model'])
+        
+        testset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset", split="test")
+        
+        tt_dataset = TAPSdataset(datapair_list=testset, with_id=True, with_text=True)
+        tt_loader = DataLoader(
+            dataset=tt_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=True,
+            sampler=StepSampler(len(tt_dataset), step=100)
+        )
+        
+        logger.info(f"Model: {model_name}")
+        logger.info(f"Checkpoint: {checkpoint_path}")
+        logger.info(f"Device: {device}")
+        logger.info(f"Output directory: {local_out_dir}")
+        os.makedirs(local_out_dir, exist_ok=True)
+        
+        model.eval()
+        enhance(args=conf,
+                model=model,
+                data_loader=tt_loader,
+                epoch=None,
+                logger=logger,
+                local_out_dir=local_out_dir
+                )
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise e
     
     
     

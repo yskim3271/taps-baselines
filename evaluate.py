@@ -48,13 +48,6 @@ def get_stts(args, logger, enhanced):
     
     return cer, wer
 
-
-def parse_transcripts(filepath):
-    with open(filepath, "r") as f:
-        lines = f.read().splitlines()
-    return {l.split('|')[0]: l.split('|')[1] for l in lines}
-
-
 ## Code modified from https://github.com/wooseok-shin/MetricGAN-plus-pytorch/tree/main
 def compute_metrics(target_wav, pred_wav, fs=16000):
     
@@ -140,59 +133,67 @@ if __name__=="__main__":
     import logging.config
     import argparse
     import importlib
-    from data import TAPSdataset, StepSampler
+    from data import TAPSdataset
     from omegaconf import OmegaConf
     from torch.utils.data import DataLoader
     from datasets import load_dataset
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--chkpt_dir", type=str, default='.', help="Path to the checkpoint directory. default is current directory")
-    parser.add_argument("--chkpt_file", type=str, default="best.th", help="Checkpoint file name. default is best.th")
+    parser.add_argument("--config", type=str, required=True, help="Path to the model configuration file.")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Path to the checkpoint directory. default is current directory")
     parser.add_argument("--log_file", type=str, default="evaluate.log", help="Name of the log file. default is evaluate.log")
-    parser.add_argument("--eval_stt", default=False, action="store_true", help="Evaluate the model using the STT model.")
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Specifies the device (cuda or cpu).")
+    parser.add_argument("--eval_stt", default=True, action="store_true", help="Evaluate the model using the STT model.")
+    parser.add_argument("--device", type=str, default="cuda", help="Specifies the device (cuda or cpu).")
 
     args = parser.parse_args()
     
-    chkpt_dir = args.chkpt_dir
-    chkpt_file = args.chkpt_file
+    checkpoint_path = args.checkpoint
     device = args.device
     log_file = args.log_file
-    
-    conf = OmegaConf.load(os.path.join(chkpt_dir, '.hydra', "config.yaml"))
-    hydra_conf = OmegaConf.load(os.path.join(chkpt_dir, '.hydra', "hydra.yaml"))
-    hydra_conf.hydra.job_logging.handlers.file.filename = log_file
-    
-    logging.config.dictConfig(OmegaConf.to_container(hydra_conf.hydra.job_logging, resolve=True))
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
     logger = logging.getLogger(__name__)
-    
-    conf.device = device
-    
-    model_args = conf.model
-    model_name = model_args.model_name
-    module = importlib.import_module("models."+ model_name)
-    model_class = getattr(module, model_name)
-    
-    model = model_class(**model_args.param).to(device)
-    chkpt = torch.load(os.path.join(chkpt_dir, chkpt_file), map_location=device)
-    model.load_state_dict(chkpt['model'])
-    
-    testset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset", split="test")
-    
-    tt_dataset = TAPSdataset(datapair_list=testset, with_id=True, with_text=True)
-    tt_loader = DataLoader(
-        dataset=tt_dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=0,
-        pin_memory=True
-        )
+
+    try:
+        conf = OmegaConf.load(args.config)
+        conf.device = device
+        conf.eval_stt = args.eval_stt
+                
+        model_name = conf.model_name
+        module = importlib.import_module("models."+ model_name)
+        model_class = getattr(module, model_name)
+        model = model_class(**conf.param).to(device)
+        chkpt = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(chkpt['model'])
         
-    logger.info(f"Model: {model_name}")
-    logger.info(f"Checkpoint: {chkpt_dir}")
-    logger.info(f"Device: {device}")
-    
-    evaluate(args=conf, 
-             model=model,
-             data_loader=tt_loader,
-             logger=logger)
+        testset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset", split="test")
+        
+        tt_dataset = TAPSdataset(datapair_list=testset, with_id=True, with_text=True)
+        tt_loader = DataLoader(
+            dataset=tt_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=True
+            )
+            
+        logger.info(f"Model: {model_name}")
+        logger.info(f"Checkpoint: {checkpoint_path}")
+        logger.info(f"Device: {device}")
+        
+        model.eval()
+        evaluate(args=conf, 
+                model=model,
+                data_loader=tt_loader,
+                logger=logger)
+        
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise e

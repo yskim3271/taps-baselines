@@ -3,7 +3,6 @@ import time
 import shutil
 import torch
 import torch.utils
-import torch.nn.functional as F
 import torch.distributed as dist
 
 from torch.utils.tensorboard import SummaryWriter
@@ -172,19 +171,6 @@ class Solver(object):
             self.writer = SummaryWriter(log_dir=self.log_dir)
 
     def train(self):
-        """Main training loop, including optional evaluation phases."""
-        if self.eval_only:
-            if self.rank == 0:
-                if self.best_state is not None:
-                    if self.is_distributed:
-                        self.model.module.load_state_dict(self.best_state['model'])
-                    else:
-                        self.model.load_state_dict(self.best_state['model'])
-                    evaluate(self.args, self.model, self.ev_loader, self.logger)
-                else:
-                    self.logger.info("No pretrained model found, skipping evaluation")
-            return
-
         # If there's a history from the checkpoint, replay metrics
         if self.history and self.rank == 0:  
             self.logger.info("Replaying metrics from previous run")

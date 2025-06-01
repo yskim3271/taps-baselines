@@ -1,8 +1,5 @@
-dataset
 outputs
 run.sh
-samples
 *pycache*
 *.pyc
-hugg_upload_model
 .gitignore
